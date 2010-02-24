@@ -14,6 +14,7 @@ The Django ORM is a great tool which makes working with a database incredibly ea
    :maxdepth: 2
    
    initial-setup
+   intro
 
 Indices and tables
 ==================
