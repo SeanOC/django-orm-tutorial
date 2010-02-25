@@ -265,4 +265,165 @@ One last trick up the ORM's sleeve: there's a convience method called ``get_or_c
    
 ``get_or_create`` accepts a series of parameters and a dictionary called ``defaults``.  The parameters will be used for querying and creation while ``defaults`` will only be used to populate fields when creating a new object.  The method returns a tuple containing the new object and a boolean value reflecting weather or not that object has just been created.
 
+Update
+------
+
+So now we're creating objects, sticking them in the database, and fetching them back.  How do we update the values on objects which we've already created?
+
+To start we need to get an object to work with:
+
+.. code-block:: python
    
+   >>> lib = Library.objects.get(name="New York Public Library")
+   >>> lib
+   <Library: New York Public Library>
+   
+Now let's say that the library has switched to a fancy new "800" number, we need to update our database:
+
+.. code-block:: python
+
+   >>> lib.phone_number
+   u'212-222-6559'
+   >>> lib.phone_number = '800-nyc-books'
+   >>> lib.save()
+   >>> lib.phone_number
+   '800-nyc-books'
+   
+Here we are modifying our object in python, and then calling the ``save`` method on it.  If we do not call the save method, the change does not get persisted to the database.  To prove that our change actually has updated our database, you can go and query your database directly or you can run the query again within django:
+
+.. code-block:: python
+
+   >>> lib = None
+   >>> lib
+   >>> lib = Library.objects.get(name="New York Public Library")
+   >>> lib
+   <Library: New York Public Library>
+   >>> lib.phone_number
+   u'800-nyc-books'
+   >>>
+   
+You can also perform updates in bulk across a queryset:
+
+.. code-block:: python
+
+   >>> ny_libraries = Library.objects.filter(state='NY')
+   >>> ny_libraries
+   [<Library: New York Public Library>, <Library: Seaford Public Library>]
+   >>> ny_libraries[0].phone_number
+   u'800-nyc-books'
+   >>> ny_libraries[1].phone_number
+   u'516-221-1334'
+   >>> ny_libraries.update(phone_number='800-NYS-BOOKS')
+   2
+   >>> ny_libraries = Library.objects.filter(state='NY')
+   >>> ny_libraries
+   [<Library: New York Public Library>, <Library: Seaford Public Library>]
+   >>> ny_libraries[0].phone_number
+   u'800-NYS-BOOKS'
+   >>> ny_libraries[1].phone_number
+   u'800-NYS-BOOKS'
+   
+Here you can see that we query for all of the libraries in NY and update their phone number to '800-NYS-BOOKS'.  Be aware that there is a gotcha with using this method.  It is a very efficient way to preform bulk updates since the update is performed with a single database query, it also avoids ever calling the ``save`` method or triggering the ``pre_save`` and ``post_save`` signals.  With a stock django model this isn't a problem but if you have added code which depends on any of those getting called whenever an object is modified, you can end up in trouble.
+
+Delete
+------
+
+Finally we're up to taking stuff out of the database.  At this point, you can probably guess how things are going to go:
+
+.. code-block:: python
+
+   >>> lib = Library.objects.get(name='Denver Public Library')
+   >>> lib
+   <Library: Denver Public Library>
+   >>> lib.delete()
+   >>> lib = Library.objects.get(name='Denver Public Library')
+   Traceback (most recent call last):
+     File "<console>", line 1, in <module>
+     File "/Users/user/.virtualenvs/orm-tutorial/src/django/django/db/models/manager.py", line 132, in get
+       return self.get_query_set().get(*args, **kwargs)
+     File "/Users/user/.virtualenvs/orm-tutorial/src/django/django/db/models/query.py", line 339, in get
+       % self.model._meta.object_name)
+   DoesNotExist: Library matching query does not exist.
+   >>> ny_libraries = Library.objects.filter(state='NY')
+   >>> ny_libraries
+   [<Library: New York Public Library>, <Library: Seaford Public Library>]
+   >>> ny_libraries.delete()
+   >>> ny_libraries = Library.objects.filter(state='NY')
+   >>> ny_libraries
+   []
+   
+Just like updates, you can call ``delete`` on a model instance to delete the individual model, or you can call ``delete`` on a queryset.  Again like before, calling ``delete`` on a queryset is efficient but it does not call the ``delete`` method on the individual model instances nor does it trigger the ``pre_delete`` or ``post_delete`` signals.
+
+Relations
+=========
+
+As the term "relational database" suggests, a major component of schema design is relating one "model" to another.  Django offers some solid tools for creating, using, and managing the most common types of relationships found in relational databases.
+
+One to many
+-----------
+
+Foreign keys or one to many relationships are the most common type of relationship found in relational databases.  Let's create a new model which connects to our ``Library`` model via a foreign key.  In ``library/models.py`` add the following after your ``Library`` model:
+
+.. code-block:: python
+
+   class Patron(models.Model):
+       name = models.CharField(max_length=200)
+       library = models.ForeignKey(Library)
+       
+       def __unicode__(self):
+           return name
+
+Our foriegn key field looks like any other field except that it takes the class of the model to be linked to as a parameter.  Alternatively you can pass a string with the format ``'<app_name>.<model_name>'``, this allows you to work around potential circular dependencies.
+
+Now we need to run ``syncdb`` again to create our new table:
+
+.. code-block:: bash
+
+   (orm-tutorial)user@host:~/tutorial$ ./manage.py syncdb
+   Creating table library_patron
+   Installing index for library.Patron model
+   
+Assuming your database supports doing so, you should be able to look at your database now to see the new table including a foreign key constraint to the ``library_library`` table.
+
+Let's fire up our shell again using ``./manage.py shell_plus`` and create some related entries:
+
+.. code-block:: python
+
+   >>> lib = Library.objects.all()[0]
+   >>> lib
+   <Library: Public Library of Princeton>
+   >>> p = Patron.objects.create(name='Bob Smith', library=lib)
+   >>> p
+   <Patron: Bob Smith>
+   >>> p2 = Patron.objects.create(name='Jane Doe', library=lib)
+   >>> p2
+   <Patron: Jane Doe>
+   
+We've now created two patrons of the Princeton library.  Thanks to the way Django's ORM is setup, we can now access information both ways across that relationship:
+
+.. code-block:: python
+   
+   >>> p.library
+   <Library: Public Library of Princeton>
+   >>> p2.library
+   <Library: Public Library of Princeton>
+   >>> lib.patron_set.all()
+   [<Patron: Bob Smith>, <Patron: Jane Doe>]
+   
+Here you can see that accessing the ``library`` attribute on each of the patrons returns the full, related library object.  Similarly, the ``patron_set`` attribute of the library object allows us to query the reverse side of the relationship.  The name of the attribute ``patron_set`` is automatically selected by Django.  By default the reverse access property for a foreign key will always be ``<model_name>_set``.  This can be overridden by passing a ``related_name`` parameter to the foreign key's definition.
+
+One to one
+----------
+
+One to one fields are almost the same as foreign keys but they are a bit more restricted and have a slightly simpler API.  As their name suggests, one to one relationships are exclusive.  Once an instance of one model has related to an instance of another model using a one to one field, no other instance of the first model may make the same relationship.  Let's add another model to our library app so that we can play with this:
+
+.. code-block:: python
+   
+   class Librarian(models.model):
+       name = models.CharField(max_length=200)
+       library = models.OneToOneField(Library)
+
+       def __unicode__(self):
+           return self.name
+           
+Once again, we need to
