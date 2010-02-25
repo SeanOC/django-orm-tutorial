@@ -419,11 +419,177 @@ One to one fields are almost the same as foreign keys but they are a bit more re
 
 .. code-block:: python
    
-   class Librarian(models.model):
+   class Librarian(models.Model):
        name = models.CharField(max_length=200)
        library = models.OneToOneField(Library)
 
        def __unicode__(self):
            return self.name
            
-Once again, we need to
+Once again, we need to run ``syncdb`` and restart our shell.
+
+Now let's work with our new model a bit:
+
+.. code-block:: python
+
+   >>> lib = Library.objects.all()[0]
+   >>> 
+   >>> lib
+   <Library: Public Library of Princeton>
+   >>> librarian = Librarian.objects.create(name='Philip J. Fry', library=lib)
+   >>> librarian
+   <Librarian: Philip J. Fry>
+   >>> librarian.library
+   <Library: Public Library of Princeton>
+   >>> lib.librarian
+   <Librarian: Philip J. Fry>
+   
+Here you can see that accessing the relationship is very easy.  As expected accessing the library attribute on the librarian returned the library instance.  Similarly a librarian property is now available on the library object and accessing that property returns a librarian instance.  By default the reverse property name is based on the model name.  Again like with foreign keys, the value of the reverse property can be set by passing a ``related_name`` argurment to the ``OneToOneField`` definition.  
+
+Finally notice what happens if we try to create another librarian with the same library property set.
+
+.. code-block:: python
+
+   
+   >>> librarian = Librarian.objects.create(name='Hermes Conrad', library=lib)
+   Traceback (most recent call last):
+     File "<console>", line 1, in <module>
+     File "/Users/user/.virtualenvs/orm-tutorial/src/django/django/db/models/manager.py", line 138, in create
+       return self.get_query_set().create(**kwargs)
+     File "/Users/user/.virtualenvs/orm-tutorial/src/django/django/db/models/query.py", line 350, in create
+       obj.save(force_insert=True, using=self.db)
+     File "/Users/user/.virtualenvs/orm-tutorial/src/django/django/db/models/base.py", line 430, in save
+       self.save_base(using=using, force_insert=force_insert, force_update=force_update)
+     File "/Users/user/.virtualenvs/orm-tutorial/src/django/django/db/models/base.py", line 519, in save_base
+       result = manager._insert(values, return_id=update_pk, using=using)
+     File "/Users/user/.virtualenvs/orm-tutorial/src/django/django/db/models/manager.py", line 195, in _insert
+       return insert_query(self.model, values, **kwargs)
+     File "/Users/user/.virtualenvs/orm-tutorial/src/django/django/db/models/query.py", line 1432, in insert_query
+       return query.get_compiler(using=using).execute_sql(return_id)
+     File "/Users/user/.virtualenvs/orm-tutorial/src/django/django/db/models/sql/compiler.py", line 789, in execute_sql
+       cursor = super(SQLInsertCompiler, self).execute_sql(None)
+     File "/Users/user/.virtualenvs/orm-tutorial/src/django/django/db/models/sql/compiler.py", line 733, in execute_sql
+       cursor.execute(sql, params)
+     File "/Users/user/.virtualenvs/orm-tutorial/src/django/django/db/backends/util.py", line 19, in execute
+       return self.cursor.execute(sql, params)
+     File "/Users/user/.virtualenvs/orm-tutorial/src/django/django/db/backends/sqlite3/base.py", line 193, in execute
+       return Database.Cursor.execute(self, query, params)
+   IntegrityError: column library_id is not unique
+   
+Since there is already a librarian with that library assigned, the unique constraint created with the ``OneToOneField`` prevents the new librarian from being created.
+
+Many To Many
+============
+
+The final type of common relationship found in relational databases is the many to many.  Here an intermediary table sits between two primary tables and keeps track of relationships between the two tables.  Let's add one last model for us to play with:
+
+.. code-block:: python
+
+   class Book(models.Model):
+       title = models.CharField(max_length=200)
+       libraries = models.ManyToManyField(Library)
+
+       def __unicode__(self):
+           return self.title
+
+And again, we need to run ``syncdb`` and restart our shell.  
+
+.. code-block:: bash
+
+   (orm-tutorial)user@host:~/tutorial$ ./manage.py syncdb
+   Creating table library_book_libraries
+   Creating table library_book
+   Installing index for library.Book_libraries model
+
+Notice that when you ran ``syncdb``, two tables were created.  The ``library_book`` table represents the actual ``Book`` model while the ``library_book_libraries`` table handles the relationships between books and libraries.
+
+Let's create some instances of our new model so we can play with the many to many relationship:
+
+.. code-block:: python
+
+   >>> b1 = Book.objects.create(title="The Hitchhiker's Guide to the Galaxy")
+   >>> b2 = Book.objects.create(title="The Restaurant at the End of the Universe")
+   >>> b3 = Book.objects.create(title="So Long, and Thanks for All the Fish")
+   >>> b1
+   <Book: The Hitchhiker's Guide to the Galaxy>
+   >>> b2
+   <Book: The Restaurant at the End of the Universe>
+   >>> b3
+   <Book: So Long, and Thanks for All the Fish>
+   
+   
+OK, we have some books now.  Notice however that they are not related to anything yet.  Since many to many relationships work via an intermediary table, we need to create all of our objects before we can define any relationships.
+
+Let's fetch some libraries to play with:
+
+.. code-block:: python
+
+   >>> lib1 = Library.objects.all()[0]
+   >>> lib2 = Library.objects.create(name="New York Public Library", address='455 5th Ave', state='NY', zip_code='10016', phone_number='212-222-6559')
+   
+add
+~~~
+
+Now let's add some books to some libraries:
+
+.. code-block:: python
+
+   >>> lib1.book_set.add(b1)
+   >>> lib1.book_set.add(b2)
+   >>> lib2.book_set.add(b3)
+   >>> lib2.book_set.add(b1)
+   >>> lib1.book_set.all()
+   [<Book: The Hitchhiker's Guide to the Galaxy>, <Book: The Restaurant at the End of the Universe>]
+   >>> lib2.book_set.all()
+   [<Book: So Long, and Thanks for All the Fish>, <Book: The Hitchhiker's Guide to the Galaxy>]
+   >>> b1.libraries.all()
+   [<Library: Public Library of Princeton>, <Library: New York Public Library>]
+   >>> b2.libraries.all()
+   [<Library: Public Library of Princeton>]
+   >>> b3.libraries.all()
+   [<Library: New York Public Library>]
+   >>> b3.libraries.add(lib1)
+   >>> lib1.book_set.all()
+   [<Book: The Hitchhiker's Guide to the Galaxy>, <Book: The Restaurant at the End of the Universe>, <Book: So Long, and Thanks for All the Fish>]
+   
+So to summarize what's going on above:  the ``Book`` class has an attribute called ``libraries`` and the ``Library`` class has an attribute called ``book_set``.  These each offer an interface into the ManyToMany relationship of the two models.  By calling ``add`` on either interface and passing an instance of the opposite model, a relationship is formed between the two.  By default these relationships are symmetrical.  That behavior can be changed when defining the `ManyToManyField <http://docs.djangoproject.com/en/dev/ref/models/fields/#manytomanyfield>`_ as well as the ``related_name`` and the model which the relationship goes through.
+
+remove
+~~~~~~
+
+Remove works pretty much the same as add:
+
+.. code-block:: python
+
+   >>> lib1.book_set.remove(b1)
+   >>> lib1.book_set.all()
+   [<Book: The Restaurant at the End of the Universe>, <Book: So Long, and Thanks for All the Fish>]
+   >>> b1.libraries.all()
+   [<Library: New York Public Library>]
+   >>> b3.libraries.all()
+   [<Library: Public Library of Princeton>, <Library: New York Public Library>]
+   >>> b3.libraries.remove(lib1)
+   >>> b3.libraries.all()
+   [<Library: New York Public Library>]
+   >>> lib1.book_set.all()
+   [<Book: The Restaurant at the End of the Universe>]
+   
+clear
+~~~~~
+
+Clear can be called from either end of a relationship and removes all of the relations to an object:
+
+.. code-block:: python
+
+   >>> lib2.book_set.all()
+   [<Book: So Long, and Thanks for All the Fish>, <Book: The Hitchhiker's Guide to the Galaxy>]
+   >>> lib2.book_set.clear()
+   >>> lib2.book_set.all()
+   []
+   >>> b1.libraries.all()
+   []
+   
+Conclusion
+==========
+
+So that's it for basic ORM functionality.  From here you should be able to build most basic applications and move on to learn about more advanced bits of the ORM.
