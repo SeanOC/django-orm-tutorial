@@ -2,7 +2,7 @@
 Getting Started
 ===============
 
-The ORM is an awesome and powerful tool.  It effectively serves a dual role.  First and formost it provides a very easy to use and safe interface to your database saving you from writing tedious CRUD code.  Then it also provides a standard, programatic method for other libraries to understand and work with your database (i.e. `ModelForms <http://docs.djangoproject.com/en/dev/topics/forms/modelforms/#topics-forms-modelforms>`_).
+The ORM is an awesome and powerful tool.  It effectively serves a dual role.  First and formost it provides a very easy to use and safe interface to your database saving you from writing tedious CRUD code.  Then it also provides a standard, programatic method for other libraries to understand and work with your database (i.e. `ModelForms <http://docs.djangoproject.com/en/dev/topics/forms/modelforms/#topics-forms-modelforms>`_ or `the Admin <http://docs.djangoproject.com/en/dev/ref/contrib/admin/>`_).
 
 Project Setup
 =============
@@ -89,7 +89,7 @@ Create, read, update, and delete; these are the fundamental operations any datab
 Create
 ------
 
-Let's create a library.  Open an interactive interpreter session by running ``./manage.py shell_plus``.  ``shell``.
+Let's create a library.  Open an interactive interpreter session by running:
 
 .. code-block:: bash
 
@@ -120,3 +120,149 @@ We imported the ``Library`` model class, created an instance with some initial v
    >>> lib2 = Library.objects.create(name='Seaford Public Library', address='2234 Jackson Ave', state='NY', zip_code='11783', phone_number='516-221-1334')
    
 If you now go look at your database, you'll find two rows have been added with the information above.
+
+
+Read
+----
+
+On to the thing your applications will be doing the overwhelming majority of the time, reading from the database.
+
+all
+~~~
+
+The simplest way we can read from the database is to ask for all of the available instances of a model.  Let's get all of the libraries from the database.
+
+.. code-block:: python
+
+   >>> Library.objects.all()
+   [<Library: Library object>, <Library: Library object>]
+
+Pretty easy, right?  We're asking the object manager ``objects`` on the model ``Library`` for ``all``.  The thing returned displays like a list, but it is actually something called a `queryset <http://docs.djangoproject.com/en/dev/ref/models/querysets/#ref-models-querysets>`_.  Querysets are collection type objects which know how to interact with the database in meaningful and relatively efficient ways.  Querysets are also the mechanism by which you create complicated database queries in Django.  We'll talk about them more as we dig more into the ORM.
+
+__unicode__
+~~~~~~~~~~~
+
+First, you might have noticed that the output from our call to ``all`` isn't terribly useful.  It tells us that we have two ``Library`` objects, but it doesn't tell us anything about those objects.  To fix this we can add a very simple method to our model
+
+.. code-block:: python
+
+   class Library(models.Model):
+       name = models.CharField(max_length=200)
+       address = models.CharField(max_length=200)
+       state = USStateField()
+       phone_number = PhoneNumberField()
+       zip_code = models.CharField(max_length=10)
+       
+   # This is the new bit
+   def __unicode__(self):
+       return self.name
+       
+What's this unicode method we've added?  It's a special method, which python uses to know how to represent the object as a unicode string.  The base model class in turn uses that unicode string in it's default ``__repr__`` method.  ``__repr__`` is a special method Python uses to know how to represent the object in places like the interactive shell.
+
+Now that we've defined our ``__unicode__`` method, let's checkout what the results of ``all`` look like now.  First kill your existing shell session by hitting ``ctrl-d`` on unix type systems or ``ctrl-z`` on windows systems.  It is possible to reload modules without restarting your shell but it can lead to some odd states, generally your better off starting with a clean session with each reload.  Now instead of running the same command as before to get an interactive interpreter session, we're going to do something a little different.  Run the following command:
+
+.. code-block:: bash
+
+   (orm-tutorial)user@host:~/tutorial$ ./manage.py shell_plus
+   
+``shell_plus`` is a management command provided by the ``django_extensions`` app.  It gives you everything that ``shell`` gives you, but it also automatically imports all of your models from all of your installed apps.  This can be a very nice shortcut when your experimenting with model code.
+
+Let's try getting all of the library instances again:
+
+.. code-block:: python
+
+   >>> Library.objects.all()
+   [<Library: New York Public Library>, <Library: Seaford Public Library>]
+   
+Much more useful output!  We can get an idea of which object each entry in the queryset represents.
+
+filter
+~~~~~~
+
+Getting all of the libraries is great, but sometimes you just want some of the libraries.  This is where the ``filter`` method comes in.  ``filter`` accepts a series of parameters and returns a queryset of model instances which match the parameters provided.  To get started let's add one more library so we have a bit more data to work with:
+
+.. code-block:: python
+
+   >>> Library.objects.create(name='Public Library of Princeton', address='65 Witherspoon Street', state='NJ', zip_code='08542-3214', phone_number='609-924-9529')
+   <Library: Public Library of Princeton>
+   
+Now, let's do some queries:
+
+.. code-block:: python
+
+   >>> Library.objects.filter(state='NY')
+   [<Library: New York Public Library>, <Library: Seaford Public Library>]
+   >>> Library.objects.filter(name__startswith='Public')
+   [<Library: Public Library of Princeton>]
+   >>> Library.objects.filter(name__contains='c')
+   [<Library: New York Public Library>, <Library: Seaford Public Library>, <Library: Public Library of Princeton>]
+   >>> Library.objects.filter(name__contains='c', state='NY')
+   [<Library: New York Public Library>, <Library: Seaford Public Library>]
+   >>> Library.objects.filter(name__contains='c').filter(state='NY')
+   [<Library: New York Public Library>, <Library: Seaford Public Library>]
+   >>> Library.objects.filter(state='CA')
+   []
+   
+In our first query we are asking for all of the libraries who's state is equal to "NY".  Correctly we are returned a queryset with the "New York Public Library" and the "Seaford Public Library".
+
+The second and third queries do something a bit new, it is filtering libraries by name but the ``filter`` parameters have ``__startswith`` and ``__contains`` appended to the end of the field names.  These are called `field lookups <http://docs.djangoproject.com/en/1.1/ref/models/querysets/#id7>`_.  Field lookups provide a simple syntax for doing specific types of queries.
+
+The fourth query has two parameters passed into to filter.  When filter is passed multiple parameters, the conditions of each parameter is connected to the next with an "AND".  More complex queries like "OR" and "NOT" will be covered later.
+
+The fifth query does the same thing as the fourth, it just accomplishes it by "chaining".  The ``filter`` method exists on both manager and queryset classes, accordingly one can call filter multiple time in a "chain" to add more conditions to the query.  Querysets are lazily evaluated (i.e. they don't actually query the database until they absolutely have to) so this can be done without needing to worry about hitting the database each time.
+
+The final query is interesting because it returns an empty queryset.
+
+get
+~~~
+
+Get is similar to ``filter`` except that it returns one, and only one instance of the model.  If the provided conditions result in no values or multiple values returned, an exception is raised.  This often can be frustrating for new developers, but it is a very effective way to catch unexpected situations.
+
+Let's use the get method to fetch a single library instance:
+
+.. code-block:: python
+
+   >>> lib = Library.objects.get(name="New York Public Library")
+   >>> lib
+   <Library: New York Public Library>
+
+Now we have a single library with the name "New York Public Library".  Let's see if all of that library's information is available
+
+.. code-block:: python
+
+   >>> lib.id
+   1
+   >>> lib.name
+   u'New York Public Library'
+   >>> lib.address
+   u'455 5th Ave'
+   >>> lib.state
+   u'NY'
+   >>> lib.zip_code
+   u'10016'
+   >>> lib.phone_number
+   u'212-222-6559'
+   
+Now you might be saying "Hold on a second!  Where did that 'id' thing come from?".  All django models are by default, given an automatically incrementing, integer, primary field.  This behavior can be overridden by passing ``primary_key=True`` as a parameter to any explicitly defined field which you wish to have act as the primary key.
+
+get_or_create
+~~~~~~~~~~~~~
+
+One last trick up the ORM's sleeve: there's a convience method called ``get_or_create``.  As the name suggests it will try to find an object with the parameters you provide and if it cannot find one, it will create one.
+
+.. code-block:: python
+
+   >>> lib, created = Library.objects.get_or_create(name='Public Library of Princeton', defaults={'addres': '65 Witherspoon Street', 'state': 'NJ', 'zip_code': '08542-3214', 'phone_number': '609-924-9529',})
+   >>> lib
+   <Library: Public Library of Princeton>
+   >>> created
+   False
+   >>> lib, created = Library.objects.get_or_create(name='Denver Public Library', defaults={'address': '10 W 14th Avenue Pkwy', 'state': 'CO', 'zip_code': '80204', 'phone_number': '720-865-1111',})
+   >>> lib
+   <Library: Denver Public Library>
+   >>> created
+   True
+   
+``get_or_create`` accepts a series of parameters and a dictionary called ``defaults``.  The parameters will be used for querying and creation while ``defaults`` will only be used to populate fields when creating a new object.  The method returns a tuple containing the new object and a boolean value reflecting weather or not that object has just been created.
+
+   
