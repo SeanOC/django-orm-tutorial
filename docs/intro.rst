@@ -479,7 +479,7 @@ Finally notice what happens if we try to create another librarian with the same 
 Since there is already a librarian with that library assigned, the unique constraint created with the ``OneToOneField`` prevents the new librarian from being created.
 
 Many To Many
-============
+------------
 
 The final type of common relationship found in relational databases is the many to many.  Here an intermediary table sits between two primary tables and keeps track of relationships between the two tables.  Let's add one last model for us to play with:
 
