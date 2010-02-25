@@ -593,3 +593,5 @@ Conclusion
 ==========
 
 So that's it for basic ORM functionality.  From here you should be able to build most basic applications and move on to learn about more advanced bits of the ORM.
+
+You can get the source to these docs as well as the completed example project at `github <http://github.com/SeanOC/django-orm-tutorial>`_.
