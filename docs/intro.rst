@@ -371,7 +371,7 @@ Foreign keys or one to many relationships are the most common type of relationsh
        library = models.ForeignKey(Library)
        
        def __unicode__(self):
-           return name
+           return "%s" % self.name
 
 Our foriegn key field looks like any other field except that it takes the class of the model to be linked to as a parameter.  Alternatively you can pass a string with the format ``'<app_name>.<model_name>'``, this allows you to work around potential circular dependencies.
 
